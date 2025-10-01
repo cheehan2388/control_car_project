@@ -5,9 +5,7 @@ import time
 import skfuzzy as fuzz
 from skfuzzy import control as fuzz_control
 
-# ==============================
-# 參數設定
-# ==============================
+
 SERIAL_PORT = '/dev/ttyUSB0'
 BAUD_RATE    = 115200
 BASE_SPEED   = 20      # 巡線時的基準速度
@@ -20,9 +18,7 @@ OFFSET_RATE_RANGE= np.arange(-100, 101, 1)
 SPEED_DIFF_RANGE = np.arange(-60,  61,  1)
 
 ALPHA_SMOOTH =  1
-# ==============================
-# 初始化硬體
-# ==============================
+
 cap = cv2.VideoCapture(0)
 if not cap.isOpened():
     print("Error: Could not open camera at index 0")
@@ -36,8 +32,6 @@ except serial.SerialException as e:
     print(f"Serial connection failed: {e}")
     exit(1)
 
-# ==============================
-# 模糊控制器設定（原樣照搬）
 
 
 
@@ -47,7 +41,7 @@ speed_diff  = fuzz_control.Consequent(SPEED_DIFF_RANGE,'speed_diff') #結果
 
 
 
-# -- 5 個模糊集合 --
+
 offset['far_left']  = fuzz.trimf(OFFSET_RANGE, [-CAM_WIDTH//2, -CAM_WIDTH//2, -CAM_WIDTH//4])
 offset['left']      = fuzz.trimf(OFFSET_RANGE, [-CAM_WIDTH//2, -CAM_WIDTH//4, -CAM_WIDTH//8])
 offset['center']    = fuzz.trimf(OFFSET_RANGE, [-CAM_WIDTH//5,             0,  CAM_WIDTH//5])
@@ -75,9 +69,7 @@ rules = [
 ]
 control_system = fuzz_control.ControlSystem(rules)
 controller     = fuzz_control.ControlSystemSimulation(control_system)
-# ==============================
-# 工具函式
-# ==============================
+
 def region_int(img):
     h, w = img.shape[:2]
     poly = np.array([[
@@ -112,14 +104,13 @@ def arrow_direction(img, min_area=MIN_AREA):
     偵測是否有黑底三角箭頭，回傳 'left' / 'right' / None
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # Otsu 二值化並反相，讓箭頭變白
     _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU | cv2.THRESH_BINARY_INV)
 
     contours, _ = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
 
-    # 選最大輪廓
+   
     cnt = max(contours, key=cv2.contourArea)
     if cv2.contourArea(cnt) < min_area:
         return None
@@ -138,12 +129,10 @@ def arrow_direction(img, min_area=MIN_AREA):
 
     return 'right' if tip[0] > centroid[0] else 'left'
 
-# ==============================
-# 主迴圈：巡線 + 箭頭右轉模式
-# ==============================
+
 turning_right = False
 turning_left  = False
-prev_offset       = 0.0   # EMA 初始值
+prev_offset       = 0.0   
 no_right_arrow_cnt = 0
 no_left_arrow_cnt  = 0
 
@@ -153,9 +142,7 @@ try:
         if not ret:
             break
 
-        # ----------------------------------------
-        # 1) 先做線檢測 → 計算 offset_smooth, offset_rate
-        # ----------------------------------------
+       
         gray   = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blur   = cv2.GaussianBlur(gray, (5,5), 0)
         edges  = cv2.Canny(blur, 50, 150)
@@ -165,21 +152,17 @@ try:
             1, np.pi/180, 18,
             minLineLength=35, maxLineGap=10
         )
-
-        # 原始偏移量
+ 
         offset_raw      = calculate_offset(lines, frame.shape[1])
-        # EMA 平滑
+        
         offset_smooth   = ALPHA_SMOOTH * offset_raw + (1 - ALPHA_SMOOTH) * prev_offset
-        # 變化率（D 項）
+        
         offset_rate_val = offset_smooth - prev_offset
         prev_offset     = offset_smooth
 
-        # ----------------------------------------
-        # 2) 箭頭偵測 → 狀態切換
-        # ----------------------------------------
         dirn = arrow_direction(frame)  # 'left' / 'right' / None
 
-        # 右轉中
+        
         if turning_right:
             if dirn == 'right':
                 no_right_arrow_cnt = 0
@@ -189,7 +172,7 @@ try:
                     turning_right      = False
                     no_right_arrow_cnt = 0
 
-        # 左轉中
+       
         elif turning_left:
             if dirn == 'left':
                 no_left_arrow_cnt = 0
@@ -199,7 +182,7 @@ try:
                     turning_left      = False   # ← 修正：關掉 left，非 right
                     no_left_arrow_cnt = 0
 
-        # 都不轉時，看新箭頭
+   
         else:
             if dirn == 'right':
                 turning_right      = True
@@ -208,15 +191,13 @@ try:
                 turning_left      = True
                 no_left_arrow_cnt = 0
 
-        # ----------------------------------------
-        # 3) 根據狀態決定左右輪速度
-        # ----------------------------------------
+  
         if turning_right:
             left_speed, right_speed = TURN_SPEED, -TURN_SPEED
         elif turning_left:
             left_speed, right_speed = -TURN_SPEED, TURN_SPEED
         else:
-            # LINE FOLLOW 模糊推論
+          
             try:
                 controller.input['offset']      = offset_smooth
                 controller.input['offset_rate'] = offset_rate_val
@@ -227,9 +208,7 @@ try:
             left_speed  = BASE_SPEED - diff/2
             right_speed = BASE_SPEED + diff/2
 
-        # ----------------------------------------
-        # 4) 傳送 PWM & 顯示
-        # ----------------------------------------
+
         send_pwm(left_speed, right_speed)
 
         mode = "TURN R" if turning_right else ("TURN L" if turning_left else "LINE")
