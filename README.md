@@ -1,4 +1,4 @@
-﻿# control_car_project （控制實驗 期終競賽） 第五名
+﻿# control_car_project （控制實驗 期終競賽）
 final_project.py : 
 
 i. Use fuzzy control with two parameters:
